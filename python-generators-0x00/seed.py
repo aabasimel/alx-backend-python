@@ -10,7 +10,7 @@ def connect_db():
         connection = pymysql.connect(
             host="localhost",
             user="root",   
-            password="Sh123&*abc",  
+            password="bw123bw",  
             charset="utf8mb4",
             cursorclass=pymysql.cursors.Cursor,
             autocommit=True
