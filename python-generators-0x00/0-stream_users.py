@@ -5,7 +5,7 @@ def stream_users():
                 conn=mysql.connector.connect(
                         host="localhost",
                         user="root",
-                        password="Sh123&*abc",
+                        password="bw123bwc",
                         database="Alx_prodev"
 
                 )
