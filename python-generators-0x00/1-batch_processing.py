@@ -9,7 +9,7 @@ def stream_users_in_batches(batch_size):
         connection = mysql.connector.connect(
             host="localhost",
             user="root",
-            password="bw123bw",
+            password="deAlto#Crack357",
             database="ALX_prodev"
         )
         cursor = connection.cursor(dictionary=True)
@@ -36,8 +36,6 @@ def batch_processing(batch_size):
             for user in batch:
                 if user['age']>25:
                     yield user
-                
-               
 
 
 
