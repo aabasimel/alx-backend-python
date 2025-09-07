@@ -20,7 +20,6 @@ def connect_db():
         print(f"Error connecting to MySQL: {e}")
         return None
 
-
 def create_database(connection):
     """Create the ALX_prodev database if it does not exist."""
     try:
