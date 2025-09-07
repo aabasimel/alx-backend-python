@@ -17,42 +17,35 @@
 # You are not allowed to use the SQL AVERAGE
 
 import mysql.connector
-
+from seed import connect_to_prodev  
 def stream_user_ages():
-        """Generator that yields user ages one by one from user_data table"""
-        try:
-                connection=mysql.connector.connect(
-                        host="localhost",
-                        user="root",
-                        password="bw123bw",
-                        database="ALX_prodev"
+    """Generator that yields user ages one by one"""
+    conn = None
+    cursor = None
+    try:
+        conn = connect_to_prodev()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT age FROM user_data")
+        for row in cursor:
+            yield row['age']
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
 
-                )
-                cursor=connection.cursor(dictionary=True)
-                cursor.execute("SELECT age FROM user_data")
-
-                for row in cursor:
-                        yield row['age']
-        except Exception as e:
-                print(f"Error:{e}")
-        finally:
-                if cursor:
-                        cursor.close()
-                if connection and connection.is_connected():
-                        connection.close()
-
-def average_age():
-        total=0
-        count=0
-        for agae in stream_user_ages():
-                total+=agae
-                count+=1
-        if count==0:
-                return 0
-        return total/count
+def calculate_average_age():
+    """Calculates average age without loading entire dataset into memory"""
+    total = 0
+    count = 0
+    for age in stream_user_ages():
+        total += age
+        count += 1
+    if count > 0:
+        average = total / count
+        print(f"Average age of users: {average}")
+    else:
+        print("No users found.")
 
 if __name__ == "__main__":
-        avg=average_age()
-        print(f"Average age of users: {avg}")
-                
-
+    calculate_average_age()
