@@ -36,3 +36,10 @@ class DatabaseConnection:
             self.connection.close()
         return False
 
+if __name__ == "__main__":
+    with DatabaseConnection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM users")  
+            results = cursor.fetchall()
+            for row in results:
+                print(row)
