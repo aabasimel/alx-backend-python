@@ -7,7 +7,7 @@ Run multiple database queries concurrently using asyncio and aiosqlite
 import asyncio
 import aiosqlite
 
-DB_PATH = "users.db"  # Path to your SQLite database file
+DB_PATH = "users.db"  
 
 async def async_fetch_users():
     """Fetch all users from the users table."""
