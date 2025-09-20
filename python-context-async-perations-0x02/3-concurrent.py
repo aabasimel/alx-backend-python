@@ -8,7 +8,6 @@ import asyncio
 import aiosqlite
 
 DB_PATH = "users.db"  
-
 async def async_fetch_users():
     """Fetch all users from the users table."""
     async with aiosqlite.connect(DB_PATH) as db:
