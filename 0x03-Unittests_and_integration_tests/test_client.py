@@ -52,8 +52,7 @@ class TestGithubOrgClient(unittest.TestCase):
 
         # Use patch as context manager to mock GithubOrgClient
         with patch.object(
-            GithubOrgClient, "org",
-            new_callable=lambda: known_payload
+            GithubOrgClient, "org", new_callable=lambda: known_payload
         ) as mock_org:
             # Create client instance
             client = GithubOrgClient("test_org")
@@ -83,8 +82,7 @@ class TestGithubOrgClient(unittest.TestCase):
 
         # Use patch as a context manager to mock _public_repos_url
         with patch.object(
-            GithubOrgClient, "_public_repos_url",
-            new_callable=lambda: test_repos_url
+            GithubOrgClient, "_public_repos_url", new_callable=lambda: test_repos_url
         ) as mock_repos_url:
             # Create client instance
             client = GithubOrgClient("test_org")
@@ -119,10 +117,11 @@ class TestGithubOrgClient(unittest.TestCase):
         self.assertEqual(result, expected_result)
 
 
-@parameterized_class(
-    ('org_payload', 'repos_payload', 'expected_repos', 'apache2_repos'),
-    TEST_PAYLOAD
-)
+@parameterized_class(("org_payload",
+                      "repos_payload",
+                      "expected_repos",
+                      "apache2_repos"),
+                     TEST_PAYLOAD)
 class TestIntegrationGithubOrgClient(unittest.TestCase):
     """Integration test class for GithubOrgClient"""
 
