@@ -10,7 +10,6 @@ from .models import Conversation, Message, ConversationParticipant
 from .serializers import ConversationSerializer, MessageSerializer
 
 
-# Create your views here.
 class ConversationViewSet(viewsets.ModelViewSet):
     """API endpoint for managing conversations"""
 
