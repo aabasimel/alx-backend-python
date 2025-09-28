@@ -1,145 +1,88 @@
-"""Import for Serializers"""
 from rest_framework import serializers
-from .models import User, Conversation, ConversationParticipant, Message
-
+from .models import User,Message,Conversation,UserManager
 
 class UserSerializer(serializers.ModelSerializer):
-    """
-    Serializer for User model with password handling and validation.
-    """
+    user_id=serializers.UUIDField(read_only=True)
+    password=serializers.CharField(write_only=True)
+    first_name=serializers.CharField()
+    last_name=serializers.CharField()
+    email=serializers.EmailField()
+    role=serializers.CharField()
+    
 
     class Meta:
-        """User model serializer configuration"""
-
-        model = User
-        fields = [
+        model=User
+        fields=(
             "user_id",
+            "password",
             "first_name",
             "last_name",
             "email",
-            "phone_number",
             "role",
             "created_at",
-        ]
-        read_only_fields = ["user_id", "created_at"]
-        extra_kwargs = {"email": {"required": True}}
-
+        )
     def create(self, validated_data):
-        """Create a new user with encrypted password"""
-        password = validated_data.pop("password", None)
-        user = User.objects.create(**validated_data)
-        if password:
-            user.set_password(password)
-            user.save()
-        return user
-
+        return User.objects.create_user(
+            email=validated_data['email'],
+            first_name=validated_data['first_name'],
+            last_name=validated_data['last_name'],
+            role=validated_data['role'],
+            password=validated_data['password']
+        )
 
 class MessageSerializer(serializers.ModelSerializer):
-    """Serializer for Message model with sender details."""
-
-    sender = UserSerializer(read_only=True)
-    sender_id = serializers.UUIDField(write_only=True)
-    message_body_text = serializers.CharField(source="message_body", read_only=True)
-    sender_email = serializers.SerializerMethodField()
-    formatted_sent_at = serializers.SerializerMethodField()
+    message_id=serializers.UUIDField(read_only=True)
+    sender=UserSerializer(read_only=True)
+    message_body=serializers.CharField()
+    conversation=serializers.PrimaryKeyRelatedField(queryset=Conversation.objects.all())
 
     class Meta:
-        """Message model serializer configuration"""
+        model=Message
+        fields=("message_id", "sender","conversation", "message_body", "sent_at")
 
-        model = Message
-        fields = [
-            "message_id",
-            "sender",
-            "sender_id",
-            "conversation",
-            "message_body",
-            "message_body_text",
-            "formatted_sent_at"
-            "sent_at",
-        ]
-        read_only_fields = ["message_id", "sent_at"]
-
-    def get_sender_email(self, obj):
-        """Get sender's email address."""
-        return obj.sender.email
-
-    def get_formatted_sent_at(self, obj):
-        """Format the sent_at timestamp for display."""
-        return obj.sent_at.strftime('%Y-%m-%d %H:%M:%S') if obj.sent_at else None
-
-    def create(self, validated_data):
-        """Create a message and validate sender is conversation participant."""
-        sender_id = validated_data.pop("sender_id")
-        conversation = validated_data["conversation"]
-
-        # Verify user is a participant in the conversation
-        if not conversation.participants.filter(user_id=sender_id).exists():
-            raise serializers.ValidationError(
-                "Sender must be a participant of the conversation"
-            )
-
-        sender = User.objects.get(user_id=sender_id)
-        validated_data["sender"] = sender
-
-        # pylint: disable=no-member
-        return Message.objects.create(**validated_data)
-
-
-class ConversationParticipantSerializer(serializers.ModelSerializer):
-    """Serializer for Conversation Participants."""
-
-    user = UserSerializer(read_only=True)
-    user_id = serializers.UUIDField(write_only=True)
-
-    class Meta:
-        """ConversationParticipant model serializer configuration"""
-
-        model = ConversationParticipant
-        fields = ["user", "user_id", "joined_at"]
-        read_only_fields = ["joined_at"]
-
+    def validate(self, attrs):
+        if "message_body" in attrs and not attrs["message_body"].strip():
+            raise serializers.ValidationError({"message_body": "Message body cannot be blank"})
+        request=self.context.get("request")
+        conversation= attrs.get("conversation")
+        if request and request.user.is_authenticated and conversation:
+            if not conversation.participants.filter(pk=request.user.pk).exists():
+                raise serializers.ValidationError("sender must be a participant of the conversation")
+        return attrs
 
 class ConversationSerializer(serializers.ModelSerializer):
-    """Serializer for Conversation model with nested participants and messages."""
+    conversation_id=serializers.CharField()
+    participants=serializers.SerializerMethodField()
+    participants_id=serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, write_only=True, source="participants")
 
-    participants = ConversationParticipantSerializer(
-        source="conversationparticipant_set", many=True, read_only=True
-    )
-    messages = MessageSerializer(many=True, read_only=True)
-    participant_ids = serializers.ListField(
-        child=serializers.UUIDField(), write_only=True, required=False
-    )
+    messages= serializers.SerializerMethodField()
 
     class Meta:
-        """Conversation model serializer configuration"""
+        model = Conversation
+        fields=("conversation_id", "participants", "participants_id", "created_at", "messages")
 
-        model: Conversation
-        fields = [
-            "conversation_id",
-            "participants",
-            "participant_ids",
-            "messages",
-            "created_at",
-        ]
-        read_only_fields = ["conversation_id", "created_at"]
-
+    def get_participants(self,obj):
+        return UserSerializer(obj.participants.all(), many=True).data
+    
+    def get_messages(self,obj):
+        qs=obj.messages.order_by("sent_at").all()
+        return MessageSerializer(qs, many=True, context=self.context).data
+    
+    def validate(self,attrs):
+        participants=attrs.get("participants")
+        if participants is not None:
+            if len(participants)<2:
+                raise serializers.ValidationError({"participants": "A conversation must have at least two participants"})
+            return attrs
     def create(self, validated_data):
-        """Create conversation and add participants."""
-        participant_ids = validated_data.pop("participant_ids", [])
-
-        # Create conversation without participant first
-        # pylint: disable=no-member
-        conversation = Conversation.objects.create()
-
-        # Add participants
-        for user_id in participant_ids:
-            try:
-                user = User.objects.get(user_id=user_id)
-                ConversationParticipant.objects.create(
-                    conversation=conversation, user=user
-                )
-            except User.DoesNotExist as exc:
-                raise serializers.ValidationError(
-                    f"User with ID {user_id} does not exist"
-                ) from exc
-        return conversation
+        participants=validated_data.pop("participants",[])
+        conv=Conversation.objects.create(**validated_data)
+        if participants:
+            conv.participants.set(participants)
+        return conv
+    def update(self,instance,validated_data):
+        participants=validated_data.pop("participants",None)
+        instance=super().update(instance,validated_data)
+        if participants is not None:
+            instance.participants.set(participants)
+        return instance
