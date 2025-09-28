@@ -30,50 +30,14 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return Response(serializer.data,status=status.HTTP_201_CREATED)
     
 class MessageViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint for managing messages.
-    """
-
-    permission_classes = [IsAuthenticated]
     serializer_class = MessageSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["conversation", "sent_at", "sender"]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["message_body"]
+    pagination_class = DefaultPagination
+    permission_classes = [IsAuthenticated, IsParticipantOfConversation]
 
     def get_queryset(self):
-        """Return messages in conversations where user is a participant with filtering."""
-
-        # pylint: disable=no-member
-        queryset = Message.objects.filter(
-            conversation__participants__user=self.request.user
-        ).select_related("sender", "conversation")
-
-        # Additional filtering based on query parameters
-        conversation_id = self.request.query_params.get("conversation")
+        conversation_id = self.request.query_params.get("conversation_id")
         if conversation_id:
-            queryset = queryset.filter(conversation_id=conversation_id)
-
-        sender_id = self.request.query_params.get("sender")
-        if sender_id:
-            queryset = queryset.filter(sender_id=sender_id)
-
-        sent_after = self.request.query_params.get("sent_after")
-        if sent_after:
-            queryset = queryset.filter(sent_at__gte=sent_after)
-
-        sent_before = self.request.query_params.get("sent_before")
-        if sent_before:
-            queryset = queryset.filter(sent_at__lte=sent_before)
-
-        return queryset.order_by("-sent_at")
-
-    def perform_create(self, serializer):
-        """Set sender to current user and validate conversation participation."""
-        conversation = serializer.validated_data["conversation"]
-
-        # Verify user is a participant in the conversation
-        if not conversation.participants.filter(user=self.request.user).exists():
-            raise serializers.ValidationError(
-                "You are not a participant in this conversation"
-            )
-
-        serializer.save(sender=self.request.user)
+            return Message.objects.filter(conversation_id=conversation_id)
+        return Message.objects.all()
