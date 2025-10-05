@@ -16,7 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include,re_path
-from messaging.urls import router
+from chats.urls import router
 from rest_framework_simplejwt.views import(
     TokenObtainPairView,
     TokenRefreshView,)
