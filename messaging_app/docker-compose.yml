@@ -12,7 +12,7 @@ services:
     environment:
       - DEBUG=True
       - MYSQL_HOST=db
-      - MYSQL_PORT=3306
+      - MYSQL_PORT=3433
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DB=${MYSQL_DB}
