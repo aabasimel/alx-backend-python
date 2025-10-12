@@ -30,6 +30,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return Response(serializer.data,status=status.HTTP_201_CREATED)
     
 class MessageViewSet(viewsets.ModelViewSet):
+    queryset = Message.objects.all()
     serializer_class = MessageSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["message_body"]

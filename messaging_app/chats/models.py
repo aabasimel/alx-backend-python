@@ -84,8 +84,8 @@ class Conversation(models.Model):
 class Message(models.Model):
     message_id=models.UUIDField( max_length=50, editable=False,default=uuid.uuid4,primary_key=True)
     sender=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=CASCADE,related_name='sent_message')
-    Conversation=models.ForeignKey(Conversation,on_delete=CASCADE, related_name="messages")
-    message_body=models.TimeField()
+    conversation=models.ForeignKey(Conversation,on_delete=CASCADE, related_name="messages")
+    message_body=models.TextField()
     sent_at=models.DateField(default=timezone.now)
 
     def __str__(self):
