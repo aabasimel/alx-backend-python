@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -e
+set -x
+cd /app/
+
+DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-"admin1@gmail.com"}
+DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-"admin"}
+
+/venv/bin/python manage.py migrate --noinput
+
+/venv/bin/python manage.py shell -c '
+from django.contrib.auth import get_user_model;
+User = get_user_model();
+email="shekemal@gmail.com";
+password="admin";
+first_name="Admin";
+last_name="Admin";
+if not User.objects.filter(email=email).exists():
+    User.objects.create_superuser(email=email, first_name=first_name, last_name=last_name, password=password);
+    print(f"Superuser created: {email}");
+else:
+    print(f"Superuser already exists: {email}");
+'
