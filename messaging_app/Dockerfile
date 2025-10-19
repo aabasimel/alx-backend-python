@@ -1,23 +1,39 @@
-# Step 1: Use the official Python 3.10 image from Docker Hub
-FROM python:3.10
+FROM python:3.11-slim
 
-# Step 2: Set the working directory inside the container
+# Create app directory
+RUN mkdir -p /app
 WORKDIR /app
 
-# Step 3: Copy the requirements.txt into the container at /app
-COPY requirements.txt .
+# Environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Step 4: Install dependencies from the requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Step 5: Copy the rest of your application code into the container
-COPY . .
+# Upgrade pip
+RUN pip install --upgrade pip
 
-# Step 6: Expose port 8000 
-EXPOSE 8000
+# Copy requirements first for caching
+COPY requirements.txt /app/
+COPY .env /app/.env
 
-# Step 7: Set the command to run your Django app
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Create virtual environment and install dependencies
+RUN python -m venv /venv \
+    && /venv/bin/pip install --upgrade pip \
+    && /venv/bin/pip install -r requirements.txt
 
-# Step 8: Run the app
-RUN docker run -p 8000:8000 messaging_app
+# Copy rest of the app
+COPY . /app/
+
+# Make entrypoint executable
+COPY entrypoint /app/entrypoint
+RUN chmod +x /app/entrypoint
+
+# Use virtualenv in PATH
+ENV PATH="/venv/bin:$PATH"
+
+
+ENTRYPOINT [ "/app/entrypoint" ]
