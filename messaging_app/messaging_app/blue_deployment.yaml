@@ -59,7 +59,7 @@ spec:
       initContainers:
         - name: django-migrations
           image: messaging_app-web:blue-latest
-          ccommand: ["/app/entrypoint"]
+          command: ["/app/entrypoint"]
           envFrom:
             - configMapRef:
                 name: app-config

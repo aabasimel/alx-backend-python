@@ -18,6 +18,7 @@ spec:
       containers:
         - name: django
           image: messaging_app-web:latest
+          command: ["/app/entrypoint"]
           ports:
             - containerPort: 8000
           envFrom:
