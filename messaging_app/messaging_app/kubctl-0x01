@@ -3,8 +3,33 @@ NAMESPACE="messaging-app1"
 DEPLOYMENT_NAME="messaging-app"
 REPLICAS=3
 
+echo "1. checking if kubectl is installed and working..."
+if ! command kubectl;
+then 
+    echo "Error: kubectl is not insalled!"
+    exit 1
+fi
+
+if ! command wrk; then
+    echo "wrk is not installed "
+    echo "intall wrk from : https://github.com/wrk/wrk"
+else
+    echo "wrk is installed"
+fi
+
+echo " "
+
 echo "scaling deployment '$DEPLOYMENT_NAME' to $REPLICAS replicas..."
 kubectl scale deployment "$DEPLOYMENT_NAME" --replicas "$REPLICAS" -n "$NAMESPACE"
+
+if [ $? -ne 0 ]; then 
+    echo "Error: failed to scale deployment"
+    exit 1
+fi
+
+echo "Deployment scaled successfully"
+
+echo " "
 
 echo "waiting for pods to be ready.."
 sleep 5
@@ -13,9 +38,25 @@ echo "Current pods in namespace '$NAMESPACE':"
 kubectl get pods -n "$NAMESPACE"
 
 echo ""
-echo "Resource usage of pods:"
-kubectl top pods -n "$NAMESPACE"
+echo "NOTE: Metrics server must be installed for 'kubectl top' to work"
+echo "Install with: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml"
 
+echo ""
+
+kubectl top nodes &>/dev/null
+if [ $? -eq 0 ]; then
+    echo "Node resource usage:"
+    kubectl top nodes
+    echo ""
+
+    echo "Pod resource usage:"
+    kubectl top pods -l app=django-messaging -n $NAMESPACE
+    echo ""
+else
+    echo "⚠ Metrics server is not available. Skipping resource monitoring."
+    echo "Install metrics-server to enable 'kubectl top' commands."
+    echo ""
+fi
 
 echo "Performing load test with wrk..."
 APP_SERVICE_IP=$(kubectl get svc django-app-service -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}')
