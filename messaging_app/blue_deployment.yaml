@@ -58,7 +58,7 @@ spec:
               cpu: "500m"
       initContainers:
         - name: django-migrations
-          image: messaging_app-web:blue-latest
+          image: messaging_app-web:v2.0
           command: ["/app/entrypoint"]
           envFrom:
             - configMapRef:
