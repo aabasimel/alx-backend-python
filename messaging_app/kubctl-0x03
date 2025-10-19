@@ -1,0 +1,325 @@
+#!/bin/bash
+
+
+set -e  
+
+DEPLOYMENT_FILE="blue_deployment.yaml"
+DEPLOYMENT_NAME="django-messaging-blue"
+SERVICE_NAME="django-messaging-service"
+NAMESPACE="default"
+TEST_ENDPOINT="/"
+CURL_TIMEOUT=3
+MONITOR_DURATION=120  # Monitor for 2 minutes during rollout
+REQUEST_INTERVAL=0.5  # Send request every 0.5 seconds
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Counters for statistics
+TOTAL_REQUESTS=0
+SUCCESSFUL_REQUESTS=0
+FAILED_REQUESTS=0
+TIMEOUT_REQUESTS=0
+START_TIME=$(date +%s)
+
+
+
+print_status() {
+    local color=$1
+    local message=$2
+    echo -e "${color}${message}${NC}"
+}
+
+# Function to check if kubectl is available
+if ! command -v kubectl &> /dev/null; then
+    print_status "$RED" " Error: kubectl is not installed!"
+    exit 1
+fi
+
+# Function to check if curl is available
+if ! command -v curl &> /dev/null; then
+    print_status "$RED" "Error: curl is not installed!"
+    exit 1
+fi
+
+
+print_status "$BLUE" "Current deployment status:"
+kubectl get deployment $DEPLOYMENT_NAME -o wide 2>/dev/null || {
+    print_status "$RED" "Deployment $DEPLOYMENT_NAME not found!"
+    exit 1
+}
+echo ""
+
+print_status "$BLUE" "Current pods:"
+kubectl get pods -l app=django-messaging,version=blue -o wide
+echo ""
+
+print_status "$BLUE" "Current image version:"
+kubectl get deployment $DEPLOYMENT_NAME -o jsonpath='{.spec.template.spec.containers[0].image}'
+echo ""
+echo ""
+
+
+pkill -f "kubectl port-forward.*8000" 2>/dev/null || true
+sleep 2
+
+print_status "$BLUE" "Starting port-forward to $SERVICE_NAME..."
+kubectl port-forward service/$SERVICE_NAME 8000:80 > /dev/null 2>&1 &
+PORT_FORWARD_PID=$!
+sleep 3
+
+if ps -p $PORT_FORWARD_PID > /dev/null; then
+    print_status "$GREEN" "Port-forward established (PID: $PORT_FORWARD_PID)"
+    print_status "$CYAN" "Testing endpoint: http://localhost:8000$TEST_ENDPOINT"
+else
+    print_status "$RED" "Failed to establish port-forward"
+    exit 1
+fi
+echo ""
+
+print_status "$BLUE" "Testing initial connectivity..."
+if curl -s -o /dev/null -w "%{http_code}" --max-time $CURL_TIMEOUT http://localhost:8000$TEST_ENDPOINT | grep -qE "200|301|302"; then
+    print_status "$GREEN" "Service is responding"
+else
+    print_status "$YELLOW" "Service may not be fully ready"
+fi
+echo ""
+
+
+# Create a temporary file for monitoring output
+MONITOR_LOG=$(mktemp)
+STATS_FILE=$(mktemp)
+
+# Initialize stats file
+echo "0" > "$STATS_FILE.total"
+echo "0" > "$STATS_FILE.success"
+echo "0" > "$STATS_FILE.failed"
+echo "0" > "$STATS_FILE.timeout"
+
+# Function to continuously test the endpoint
+continuous_monitor() {
+    local log_file=$1
+    local stats_file=$2
+    local start_time=$(date +%s)
+    
+    while true; do
+        local current_time=$(date +%s)
+        local elapsed=$((current_time - start_time))
+        
+        # Increment total requests
+        local total=$(cat "$stats_file.total")
+        echo $((total + 1)) > "$stats_file.total"
+        
+        # Make request with timeout
+        local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time $CURL_TIMEOUT http://localhost:8000$TEST_ENDPOINT 2>/dev/null || echo "TIMEOUT")
+        local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+        
+        if [ "$http_code" == "TIMEOUT" ] || [ "$http_code" == "000" ]; then
+            local timeout=$(cat "$stats_file.timeout")
+            echo $((timeout + 1)) > "$stats_file.timeout"
+            echo "[$timestamp]  TIMEOUT/ERROR - Request failed" >> "$log_file"
+        elif [[ "$http_code" =~ ^(200|301|302)$ ]]; then
+            local success=$(cat "$stats_file.success")
+            echo $((success + 1)) > "$stats_file.success"
+            echo "[$timestamp]  SUCCESS - HTTP $http_code" >> "$log_file"
+        else
+            local failed=$(cat "$stats_file.failed")
+            echo $((failed + 1)) > "$stats_file.failed"
+            echo "[$timestamp] WARNING - HTTP $http_code" >> "$log_file"
+        fi
+        
+        sleep $REQUEST_INTERVAL
+    done
+}
+
+# Start monitoring in background
+print_status "$CYAN" "Starting continuous availability monitoring..."
+print_status "$CYAN" "Sending requests every ${REQUEST_INTERVAL}s to http://localhost:8000$TEST_ENDPOINT"
+echo ""
+continuous_monitor "$MONITOR_LOG" "$STATS_FILE" &
+MONITOR_PID=$!
+
+
+print_status "$YELLOW" "Applying updated deployment from $DEPLOYMENT_FILE..."
+echo ""
+
+if [ ! -f "$DEPLOYMENT_FILE" ]; then
+    print_status "$RED" "Deployment file not found: $DEPLOYMENT_FILE"
+    kill $MONITOR_PID 2>/dev/null
+    kill $PORT_FORWARD_PID 2>/dev/null
+    exit 1
+fi
+
+kubectl apply -f $DEPLOYMENT_FILE
+
+print_status "$GREEN" "Deployment update applied"
+echo ""
+
+print_status "$BLUE" "New image version:"
+kubectl get deployment $DEPLOYMENT_NAME -o jsonpath='{.spec.template.spec.containers[0].image}'
+echo ""
+echo ""
+
+print_status "$CYAN" "Watching rollout status (this will show live progress)..."
+echo ""
+
+# Monitor rollout status
+kubectl rollout status deployment/$DEPLOYMENT_NAME --timeout=5m &
+ROLLOUT_PID=$!
+
+# Show pod changes in real-time
+print_status "$CYAN" "Pod transitions:"
+echo ""
+
+# Monitor for a bit to show pod changes
+for i in {1..20}; do
+    echo "─────────────────────────────────────────"
+    echo "Time: $(date '+%H:%M:%S')"
+    kubectl get pods -l app=django-messaging,version=blue -o custom-columns=NAME:.metadata.name,STATUS:.status.phase,READY:.status.conditions[?\(@.type==\"Ready\"\)].status,RESTARTS:.status.containerStatuses[0].restartCount,AGE:.metadata.creationTimestamp --no-headers
+    echo ""
+    sleep 3
+done
+
+# Wait for rollout to complete
+wait $ROLLOUT_PID
+ROLLOUT_EXIT_CODE=$?
+
+echo ""
+
+if [ $ROLLOUT_EXIT_CODE -eq 0 ]; then
+    print_status "$GREEN" "Rollout completed successfully!"
+else
+    print_status "$RED" "Rollout failed or timed out!"
+fi
+
+
+print_status "$YELLOW" "Stopping continuous monitoring..."
+kill $MONITOR_PID 2>/dev/null || true
+sleep 2
+
+# Calculate statistics
+TOTAL_REQUESTS=$(cat "$STATS_FILE.total")
+SUCCESSFUL_REQUESTS=$(cat "$STATS_FILE.success")
+FAILED_REQUESTS=$(cat "$STATS_FILE.failed")
+TIMEOUT_REQUESTS=$(cat "$STATS_FILE.timeout")
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+
+echo ""
+print_status "$CYAN" "═══════════════════════════════════════════"
+print_status "$CYAN" "   DOWNTIME ANALYSIS RESULTS"
+print_status "$CYAN" "═══════════════════════════════════════════"
+echo ""
+
+print_status "$BLUE" "Request Statistics:"
+echo "   Total Requests:      $TOTAL_REQUESTS"
+echo "   Successful:        $SUCCESSFUL_REQUESTS ($(awk "BEGIN {printf \"%.2f\", ($SUCCESSFUL_REQUESTS/$TOTAL_REQUESTS)*100}")%)"
+echo "   Failed:           $FAILED_REQUESTS ($(awk "BEGIN {printf \"%.2f\", ($FAILED_REQUESTS/$TOTAL_REQUESTS)*100}")%)"
+echo "   Timeout/Error:     $TIMEOUT_REQUESTS ($(awk "BEGIN {printf \"%.2f\", ($TIMEOUT_REQUESTS/$TOTAL_REQUESTS)*100}")%)"
+echo ""
+
+print_status "$BLUE" "⏱️  Time Statistics:"
+echo "   Total Duration:      ${DURATION}s"
+echo "   Request Interval:    ${REQUEST_INTERVAL}s"
+echo "   Avg Requests/sec:    $(awk "BEGIN {printf \"%.2f\", $TOTAL_REQUESTS/$DURATION}")"
+echo ""
+
+# Determine if there was downtime
+if [ $TIMEOUT_REQUESTS -eq 0 ] && [ $FAILED_REQUESTS -eq 0 ]; then
+    print_status "$GREEN" " ZERO DOWNTIME ACHIEVED! "
+    print_status "$GREEN" "All requests succeeded during the rolling update!"
+elif [ $TIMEOUT_REQUESTS -eq 0 ]; then
+    print_status "$YELLOW" "  No timeouts, but some failed requests detected"
+    print_status "$YELLOW" "Check the logs below for details"
+else
+    print_status "$RED" "DOWNTIME DETECTED!"
+    print_status "$RED" "$TIMEOUT_REQUESTS requests failed during the update"
+fi
+
+echo ""
+print_status "$CYAN" "═══════════════════════════════════════════"
+echo ""
+
+print_status "$BLUE" "📋 Recent monitoring events (last 20):"
+echo ""
+tail -20 "$MONITOR_LOG"
+echo ""
+
+
+print_status "$BLUE" "Current deployment status:"
+kubectl get deployment $DEPLOYMENT_NAME -o wide
+echo ""
+
+print_status "$BLUE" "Current pods (should all be new):"
+kubectl get pods -l app=django-messaging,version=blue -o wide
+echo ""
+
+print_status "$BLUE" "Pod details:"
+kubectl describe pods -l app=django-messaging,version=blue | grep -E "Name:|Image:|Status:|Node:"
+echo ""
+
+print_status "$BLUE" "Deployment history:"
+kubectl rollout history deployment/$DEPLOYMENT_NAME
+echo ""
+
+print_status "$BLUE" "Verify image versions in running pods:"
+kubectl get pods -l app=django-messaging,version=blue -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}'
+echo ""
+
+
+
+print_status "$BLUE" "Testing updated application..."
+for i in {1..5}; do
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time $CURL_TIMEOUT http://localhost:8000$TEST_ENDPOINT)
+    if [[ "$http_code" =~ ^(200|301|302)$ ]]; then
+        print_status "$GREEN" "Test $i/5: ✅ HTTP $http_code - Application responding"
+    else
+        print_status "$RED" "Test $i/5: ❌ HTTP $http_code - Issue detected"
+    fi
+    sleep 1
+done
+
+echo ""
+
+# Cleanup
+print_status "$YELLOW" "Cleaning up..."
+kill $PORT_FORWARD_PID 2>/dev/null || true
+rm -f "$MONITOR_LOG" "$STATS_FILE.total" "$STATS_FILE.success" "$STATS_FILE.failed" "$STATS_FILE.timeout"
+
+echo ""
+
+
+
+print_status "$GREEN" "Summary:"
+echo "  • Rolling update applied successfully"
+echo "  • All pods updated to new version"
+echo "  • Downtime monitoring completed"
+echo "  • Total requests tested: $TOTAL_REQUESTS"
+if [ $TIMEOUT_REQUESTS -eq 0 ] && [ $FAILED_REQUESTS -eq 0 ]; then
+    echo "  • Result:  ZERO DOWNTIME"
+else
+    echo "  • Result: Some issues detected"
+fi
+echo ""
+
+print_status "$CYAN" "Useful Commands:"
+echo "  # View deployment status"
+echo "  kubectl get deployment $DEPLOYMENT_NAME"
+echo ""
+echo "  # View pod logs"
+echo "  kubectl logs -l version=blue --tail=50 -f"
+echo ""
+echo "  # Rollback to previous version"
+echo "  kubectl rollout undo deployment/$DEPLOYMENT_NAME"
+echo ""
+echo "  # View rollout history"
+echo "  kubectl rollout history deployment/$DEPLOYMENT_NAME"
+echo ""
+echo "  # Check specific revision"
+echo "  kubectl rollout history deployment/$DEPLOYMENT_NAME --revision=2"
+echo ""
