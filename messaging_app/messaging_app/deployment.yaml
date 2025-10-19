@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: messaging-app
+  namespace: messaging-app
+  labels: django
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels: 
+      app: django
+  template:
+    metadata:
+      labels: 
+        app: django
+    spec:
+      containers:
+        - name: django
+          image: messaging_app-web:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: app-config 
+            - secretRef:
+                name: db-secret-credentials
+                
+          
+
