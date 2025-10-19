@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-app-blue
+  namespace: messaging-app
+  labels:
+    app: django
+    version: blue
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: django
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: django
+        version: blue
+    spec:
+      containers:
+        - name: django
+          image: messaging_app-web:blue-latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: db-secret-credentials
+          env:
+            - name: VERSION
+              value: "blue-v1.0"
+            - name: DEPLOYMENT_COLOR
+              value: "blue"
+          livenessProbe:
+            httpGet:
+              path: /health/
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      initContainers:
+        - name: django-migrations
+          image: messaging_app-web:blue-latest
+          command: ["/app/entrypoint"]
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: db-secret-credentials
