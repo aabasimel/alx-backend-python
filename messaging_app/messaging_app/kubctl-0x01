@@ -1,0 +1,22 @@
+#!/bin/bash
+NAMESPACE="messaging-app1"
+DEPLOYMENT_NAME="messaging-app"
+REPLICAS=3
+
+echo "scaling deployment '$DEPLOYMENT_NAME' to $REPLICAS replicas..."
+kubectl scale deployment "$DEPLOYMENT_NAME" --replicas "$REPLICAS" -n "$NAMESPACE"
+
+echo "waiting for pods to be ready.."
+sleep 5
+
+echo "Current pods in namespace '$NAMESPACE':"
+kubectl get pods -n "$NAMESPACE"
+
+echo ""
+echo "Resource usage of pods:"
+kubectl top pods -n "$NAMESPACE"
+
+
+echo "Performing load test with wrk..."
+APP_SERVICE_IP=$(kubectl get svc django-app-service -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}')
+wrk -t2 -c10 -d10s http://$APP_SERVICE_IP:8000/

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: messaging-app
-  namespace: messaging-app
+  namespace: messaging-app1
   labels: django
 
 spec:
@@ -25,6 +25,6 @@ spec:
                 name: app-config 
             - secretRef:
                 name: db-secret-credentials
-                
+
           
 
