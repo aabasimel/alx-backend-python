@@ -1,0 +1,7 @@
+#!/bin/bash
+APP_PORT=${PORT:-8081}
+cd /app
+# run migration
+/bin/bash /app/migrate
+
+/venv/bin/gunicorn --worker-tmp-dir /dev/shm messaging_app.wsgi:application --bind "0.0.0.0:${APP_PORT}"
