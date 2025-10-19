@@ -34,7 +34,6 @@ spec:
     port: 8000
     targetPort: 8000
 ---
-# Main service - switch between blue and green by changing selector
 apiVersion: v1
 kind: Service
 metadata:
