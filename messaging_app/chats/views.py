@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
 from django_filters.rest_framework import DjangoFilterBackend
 from .pagination import MessagePagination, ConversationPagination
 from .permissions import (
@@ -45,18 +45,21 @@ class ConversationViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(participants__first_name__iexact=first_name).distinct()
 
         return queryset
+from rest_framework_simplejwt.authentication import JWTAuthentication
+
 class MessageViewSet(viewsets.ModelViewSet):
     """
     ViewSet for listing and creating messages within a conversation.
     """
     serializer_class = MessageSerializer
-    permission_classes = [IsAuthenticated, IsMessageSenderOrParticipant]
+    permission_classes = [IsAuthenticated]  # Only this permission class
+    authentication_classes = [JWTAuthentication]  # This ensures 401 for missing/invalid token
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_class = MessageFilter
+    filterset_fields = ['sender__email']  # Enable filtering by sender email
     search_fields = ['message_body', 'sender__email', 'sender__first_name', 'sender__last_name']
     ordering_fields = ['sent_at', 'sender__email']
     ordering = ['sent_at']
-    pagination_class = MessagePagination
+    pagination_class = DefaultPagination  # Use DefaultPagination (10 items/page)
 
     def get_queryset(self):
         """
@@ -71,19 +74,27 @@ class MessageViewSet(viewsets.ModelViewSet):
             ).select_related('sender', 'conversation')
         return Message.objects.none()
 
-    def perform_create(self, serializer):
-        """
-        Set the sender of the message to the current authenticated user.
-        """
+    def check_conversation_exists(self):
+        """Check if conversation exists and return it or raise NotFound."""
         conversation_pk = self.kwargs.get('conversation_pk')
         try:
-            conversation = Conversation.objects.get(conversation_id=conversation_pk)
+            return Conversation.objects.get(conversation_id=conversation_pk)
         except Conversation.DoesNotExist:
-            raise ValidationError("Conversation does not exist.")
+            raise NotFound("Conversation does not exist.")
 
+    def check_permissions(self, request):
+        """Check permissions after verifying conversation exists."""
+        super().check_permissions(request)
+        conversation = self.check_conversation_exists()
+        if request.user not in conversation.participants.all():
+            self.permission_denied(
+                request,
+                message="You are not a participant of this conversation."
+            )
+
+    def perform_create(self, serializer):
+        """Set the sender and conversation after all permission checks."""
+        conversation = self.check_conversation_exists()
         if self.request.user not in conversation.participants.all():
-            # Raise a PermissionDenied exception so DRF handles it consistently
-            # (instead of returning a Response from perform_create).
             raise PermissionDenied("You are not a participant of this conversation.")
-
         serializer.save(sender=self.request.user, conversation=conversation)
