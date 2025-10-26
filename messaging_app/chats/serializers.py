@@ -34,7 +34,13 @@ class MessageSerializer(serializers.ModelSerializer):
     message_id=serializers.UUIDField(read_only=True)
     sender=UserSerializer(read_only=True)
     message_body=serializers.CharField()
-    conversation=serializers.PrimaryKeyRelatedField(queryset=Conversation.objects.all())
+    # conversation may be provided by the nested URL/view (perform_create)
+    # so make it optional during validation here.
+    conversation=serializers.PrimaryKeyRelatedField(queryset=Conversation.objects.all(), required=False, allow_null=True)
+    # ensure we handle datetimes safely even if the DB/model uses a DateField
+    # (some migrations/models use DateField with a datetime default). Represent
+    # sent_at as DateTime to avoid DRF asserting on datetime vs date.
+    sent_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model=Message
@@ -51,7 +57,7 @@ class MessageSerializer(serializers.ModelSerializer):
         return attrs
 
 class ConversationSerializer(serializers.ModelSerializer):
-    conversation_id=serializers.CharField()
+    conversation_id=serializers.UUIDField(read_only=True)
     participants=serializers.SerializerMethodField()
     participants_id=serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, write_only=True, source="participants")
 
@@ -69,14 +75,22 @@ class ConversationSerializer(serializers.ModelSerializer):
         return MessageSerializer(qs, many=True, context=self.context).data
     
     def validate(self,attrs):
-        participants=attrs.get("participants")
-        if participants is not None:
-            if len(participants)<2:
-                raise serializers.ValidationError({"participants": "A conversation must have at least two participants"})
-            return attrs
+        participants=attrs.get("participants",[])
+        request=self.context.get('request')
+
+        if request and request.user.is_authenticated:
+            total_participants=len(participants)+1
+        else:
+            total_participants=len(participants)
+        if total_participants < 2:
+            raise serializers.ValidationError({"participants": "A conversation must have at least two participants"})
+        return attrs
     def create(self, validated_data):
         participants=validated_data.pop("participants",[])
         conv=Conversation.objects.create(**validated_data)
+        request=self.context.get('request')
+        if request and request.user.is_authenticated:
+            participants.append(request.user)
         if participants:
             conv.participants.set(participants)
         return conv

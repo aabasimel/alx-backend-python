@@ -86,7 +86,9 @@ class Message(models.Model):
     sender=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=CASCADE,related_name='sent_message')
     conversation=models.ForeignKey(Conversation,on_delete=CASCADE, related_name="messages")
     message_body=models.TextField()
-    sent_at=models.DateField(default=timezone.now)
+    # Use DateTimeField so we retain timezone information and match serializer
+    # representation (sent_at should include time and timezone).
+    sent_at=models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return f"message {self.message_id} from {self.sender}"
