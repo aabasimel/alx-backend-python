@@ -23,10 +23,29 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
+    tools {
+        git 'Default'
+    }
+
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                script {
+                    // Clean workspace before checkout
+                    deleteDir()
+                    // Checkout with specific settings
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: '*/main']],
+                        doGenerateSubmoduleConfigurations: false,
+                        extensions: [[$class: 'CleanBeforeCheckout']],
+                        submoduleCfg: [],
+                        userRemoteConfigs: [[
+                            url: 'https://github.com/aabasimel/alx-backend-python.git',
+                            credentialsId: 'github-credentials'
+                        ]]
+                    ])
+                }
             }
         }
 
