@@ -15,32 +15,23 @@ pipeline {
     environment {
         PYTHON_VERSION = '3.10'
         PYTEST_HTML_REPORT = 'test-reports/report.html'
+        WORKSPACE_DIR = '/var/jenkins_home/workspace/messaging-app'
     }
     
     options {
         timestamps()
         timeout(time: 1, unit: 'HOURS')
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        skipDefaultCheckout(true)
     }
 
     stages {
         stage('Checkout') {
             steps {
-                script {
-                    // Clean workspace
-                    sh 'rm -rf .git'
-                    sh 'rm -rf *'
-                    
-                    // Initialize new repository
-                    sh 'git init'
-                    
-                    // Add remote and fetch
-                    sh '''
-                        git remote add origin https://github.com/aabasimel/alx-backend-python.git
-                        git fetch origin
-                        git checkout -f origin/main
-                    '''
+                dir(env.WORKSPACE_DIR) {
+                    git branch: 'main',
+                        url: 'https://github.com/aabasimel/alx-backend-python.git',
+                        changelog: true,
+                        poll: true
                 }
             }
         }
