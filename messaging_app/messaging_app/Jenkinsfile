@@ -16,7 +16,8 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                cleanWs()
+                // Use deleteDir() (available by default) instead of cleanWs()
+                deleteDir()
                 // Use the Git plugin checkout
                 git branch: 'main', url: 'https://github.com/aabasimel/alx-backend-python.git'
             }
@@ -54,15 +55,26 @@ pipeline {
 
     post {
         always {
-            publishHTML([
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: TEST_REPORT_DIR,
-                reportFiles: 'report.html',
-                reportName: 'PyTest Report'
-            ])
-            cleanWs()
+            script {
+                // Only publish/archive if the report exists
+                if (fileExists("${TEST_REPORT_DIR}/report.html")) {
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: TEST_REPORT_DIR,
+                        reportFiles: 'report.html',
+                        reportName: 'PyTest Report'
+                    ])
+
+                    archiveArtifacts artifacts: "${TEST_REPORT_DIR}/**/*", fingerprint: true
+                } else {
+                    echo "No test report found at ${TEST_REPORT_DIR}, skipping publish/archive."
+                }
+            }
+
+            // Use deleteDir() to cleanup workspace
+            deleteDir()
         }
         success {
             echo "Build succeeded: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
