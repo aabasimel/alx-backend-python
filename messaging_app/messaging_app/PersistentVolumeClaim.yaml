@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: postgres-pvc 
-  namespace: nessaging-app
+  name: mysqldb-pvc 
+  namespace: messaging-app1
 spec:
   storageClassName: manual
   accessModes:
     - ReadWriteOnce
-  resouces:
+  resources:
     requests:
       storage: 50M
-    volumeName: postgres-pv
+  volumeName: mysqldb-pv

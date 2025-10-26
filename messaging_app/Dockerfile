@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 # Create app directory
 RUN mkdir -p /app
@@ -11,6 +11,11 @@ ENV PYTHONUNBUFFERED=1
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    python3-tk \
+    tk8.6 \
+    git \
+    default-libmysqlclient-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip
@@ -31,6 +36,9 @@ COPY . /app/
 # Make entrypoint executable
 COPY entrypoint /app/entrypoint
 RUN chmod +x /app/entrypoint
+
+COPY wait-for-it.sh /app/wait-for-it.sh
+RUN chmod +x /app/wait-for-it.sh
 
 # Use virtualenv in PATH
 ENV PATH="/venv/bin:$PATH"

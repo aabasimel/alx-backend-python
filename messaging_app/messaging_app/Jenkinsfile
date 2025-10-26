@@ -1,0 +1,103 @@
+pipeline {
+    agent {
+        docker {
+            image 'python:3.10-slim'
+            args '-v /var/run/docker.sock:/var/run/docker.sock -u root'
+        }
+    }
+
+    environment {
+        DOCKERHUB_CREDENTIALS_ID = 'dockerhub-credentials'
+        DOCKER_IMAGE_NAME = "aabasimel/messaging-app"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    credentialsId: 'github-credentials',
+                    url: 'https://github.com/aabasimel/alx-backend-python/messaging_app.git'
+            }
+        }
+
+        stage('Setup Python Environment') {
+            steps {
+                sh '''
+                    apt-get update
+                    apt-get install -y pkg-config default-libmysqlclient-dev build-essential
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip3 install --upgrade pip
+                    pip3 install -r messaging_app/requirements.txt
+                    pip3 install pytest pytest-html pytest-cov
+                '''
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                dir('messaging_app') {
+                    sh '''
+                        set +e
+                        . ../venv/bin/activate
+                        python -m pytest --html=report.html --self-contained-html --cov=. --cov-report=html --cov-report=term
+                        PYTEST_EXIT_CODE=$?
+                        set -e
+                        if [ $PYTEST_EXIT_CODE -eq 5 ]; then
+                            echo "Pytest exited with code 5 (No tests found). Continuing build."
+                            exit 0
+                        fi
+                        exit $PYTEST_EXIT_CODE
+                    '''
+                }
+            }
+        }
+
+        stage('Generate Test Report') {
+            steps {
+                publishHTML([
+                    allowMissing: true, // Allow missing report if no tests ran
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'messaging_app',
+                    reportFiles: 'report.html',
+                    reportName: 'Pytest Report'
+                ])
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    def imageName = "${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
+                    echo "Building Docker image: ${imageName}"
+                    docker.build(imageName, 'messaging_app')
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    def imageName = "${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
+                    echo "Pushing Docker image: ${imageName}"
+                    docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS_ID) {
+                        docker.image(imageName).push()
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline execution completed'
+        }
+        success {
+            echo 'Tests passed, and Docker image pushed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Please check the logs and reports.'
+        }
+    }
+}

@@ -11,12 +11,13 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
-import pymysql
-pymysql.install_as_MySQLdb()
+import os
+import environ
+from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
+load_dotenv(dotenv_path=BASE_DIR / '.env')
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
@@ -26,7 +27,7 @@ SECRET_KEY = "django-insecure-s73v%8*ofj9j8psrtin&2&=1$-sia5=*4ka3s)y4*rzsa^tjzp
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -79,13 +80,13 @@ WSGI_APPLICATION = "messaging_app.wsgi.application"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    "default": {
+    'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'messages_db',       
-        'USER': 'aabasimel',      
-        'PASSWORD': 'password123',  
-        'HOST': 'localhost',          
-        'PORT': '3433', 
+        'NAME': os.getenv('MYSQL_DATABASE', 'messaging_app'),  # default if not set
+        'USER': os.getenv('MYSQL_USER', 'root'),
+        'PASSWORD': os.getenv('MYSQL_PASSWORD', ''),          # keep empty if not set
+        'HOST': os.getenv('MYSQL_HOST', 'db'),
+        'PORT': int(os.getenv('MYSQL_PORT', 3306)),
     }
 }
 
@@ -143,6 +144,7 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+     'UNAUTHENTICATED_USER': None,
     
 }
 AUTH_USER_MODEL="chats.User"

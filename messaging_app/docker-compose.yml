@@ -11,23 +11,31 @@ services:
     environment:
       - DEBUG=True
       - MYSQL_HOST=db
-      - MYSQL_PORT=3433
-      - MYSQL_USER=${USER}
-      - MYSQL_PASSWORD=${PASSWORD}
-      - MYSQL_DB=${NAME}
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DB=${MYSQL_DATABASE}
     depends_on:
       - db
 
-  # MySQL database service
   db:
-    image: mysql:5.7
+    image: mysql:8.0
+    platform: linux/amd64
+    restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_USER: ${USER}
-      MYSQL_PASSWORD: ${PASSWORD}
-      MYSQL_DATABASE: ${NAME}
+      MYSQL_ROOT_PASSWORD: Sh123&*abc
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3307:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 5
+      timeout: 5s
 
 volumes:
-  mysql_data:
+  db_data:

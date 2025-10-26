@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: django-app-blue
-  namespace: messaging-app
+  namespace: messaging-app1
   labels:
     app: django
     version: blue

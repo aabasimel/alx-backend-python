@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: django-app-service
-  namespace: messaging-app
+  namespace: messaging-app1
 spec:
   selector:
     app: django

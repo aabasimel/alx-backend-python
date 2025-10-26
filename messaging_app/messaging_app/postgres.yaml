@@ -1,30 +1,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: postgres
-  namespace: messaging-app
+  name: mysqldb
+  namespace: messaging-app1
 spec:
   replicas: 1
   selector:
     matchLabels: 
-      app: postgresdb  
+      app: mysqldb  
   template:
     metadata:
       labels:
-        app: postgresdb
+        app: mysqldb
     spec:
       containers:
-        - name: postgresdb
-          image: postgres:14
+        - name: mysqldb
+          image: mysql:8.0.36
           ports:
             - containerPort: 5432
           envFrom:
             - secretRef: 
                 name: db-secret-credentials
           volumeMounts:
-            - mountPath: /var/lib/postgresql/data
+            - mountPath: var/lib/mysql
               name: db-data
       volumes:
         - name: db-data
           persistentVolumeClaim:
-            claimName: postgres-pvc
+            claimName: mysqldb-pvc
