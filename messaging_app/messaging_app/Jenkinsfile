@@ -1,23 +1,13 @@
-/*
- * Jenkinsfile for Messaging App CI/CD Pipeline
- * 
- * This pipeline handles the complete CI/CD process including:
- * - Code quality checks
- * - Security scanning
- * - Test execution with coverage
- * - Docker image building and publishing
- * - Staged deployments (staging -> production)
- */
-
+// Simplified, syntactically-correct Jenkinsfile
 pipeline {
     agent any
 
     environment {
-        PYTHON_VERSION = '3.10'
-        PYTEST_HTML_REPORT = 'test-reports/report.html'
-        WORKSPACE_DIR = '/var/jenkins_home/workspace/messaging-app'
+        // Docker image name to build and test
+        DOCKER_IMAGE = "aabasimel/messaging-app:${BUILD_NUMBER}"
+        TEST_REPORT_DIR = 'messaging_app/test-reports'
     }
-    
+
     options {
         timestamps()
         timeout(time: 1, unit: 'HOURS')
@@ -27,569 +17,59 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                dir(env.WORKSPACE_DIR) {
-                    git branch: 'main',
-                        url: 'https://github.com/aabasimel/alx-backend-python.git',
-                        changelog: true,
-                        poll: true
-                }
+                cleanWs()
+                // Use the Git plugin checkout
+                git branch: 'main', url: 'https://github.com/aabasimel/alx-backend-python.git'
             }
         }
 
-        stage('Setup Python') {
-            steps {
-                sh '''
-                    python3 -m pip install --upgrade pip
-                    python3 -m pip install virtualenv
-                    python3 -m virtualenv venv
-                    . venv/bin/activate
-                    pip install -r requirements.txt
-                    pip install pytest pytest-html coverage
-                '''
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                sh '''
-                    . venv/bin/activate
-                    mkdir -p test-reports
-                    pytest --html=test-reports/report.html --self-contained-html
-                    coverage run -m pytest
-                    coverage report
-                    coverage html -d test-reports/coverage
-                '''
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                script {
-                    // Run tests in Docker container
-                    sh """
-                        docker run --name ${CONTAINER_NAME} \
-                            -v \${WORKSPACE}/messaging_app/reports:/app/reports \
-                            ${DOCKER_IMAGE} \
-                            python manage.py test
-                    """
-                }
-            }
-        }
-
-        stage('Code Quality') {
-            steps {
-                script {
-                    // Run pylint in Docker container
-                    sh """
-                        docker run --name ${CONTAINER_NAME}-lint \
-                            ${DOCKER_IMAGE} \
-                            bash -c "pip install pylint && pylint messaging_app/ chats/ || true"
-                    """
-                }
-            }
-        }
-
-        stage('Coverage') {
-            steps {
-                script {
-                    // Run coverage in Docker container
-                    sh """
-                        docker run --name ${CONTAINER_NAME}-coverage \
-                            -v \${WORKSPACE}/messaging_app/htmlcov:/app/htmlcov \
-                            ${DOCKER_IMAGE} \
-                            bash -c "pip install coverage && coverage run manage.py test && coverage report && coverage html"
-                    """
-                }
-        }
-
-    environment {
-        // Credentials Configuration
-        DOCKERHUB_CREDENTIALS_ID = 'dockerhub-credentials'
-        GITHUB_CREDENTIALS_ID = 'github-credentials'
-        SLACK_CHANNEL = '#deployments'
-        
-        // Docker Configuration
-        DOCKER_IMAGE_NAME = "aabasimel/messaging-app"
-        DOCKER_BUILDKIT = '1'
-        
-        // Testing Configuration
-        PYTEST_ARGS = '--html=report.html --self-contained-html --cov=. --cov-report=html --cov-report=term'
-        MIN_COVERAGE = '80'  // Minimum required code coverage percentage
-        
-        // Code Quality Configuration
-        SONAR_PROJECT_KEY = 'messaging-app'
-        MAX_PYLINT_ERRORS = '10'
-        
-        // Deployment Configuration
-        DEPLOY_TIMEOUT = '5m'
-        ENVIRONMENTS = [
-            staging: [
-                namespace: 'messaging-app-staging',
-                url: 'https://staging.messaging-app.com',
-                replicas: '2'
-            ],
-            production: [
-                namespace: 'messaging-app-prod',
-                url: 'https://messaging-app.com',
-                replicas: '3'
-            ]
-        ]
-        
-        // Notification Configuration
-        SLACK_WEBHOOK = credentials('slack-webhook')
-    }
-
-    options {
-        timeout(time: 1, unit: 'HOURS')
-        disableConcurrentBuilds()
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-    }
-
-    stages {
-        stage('Checkout') {
-            steps {
-                cleanWs()  // Clean workspace before checkout
-                git branch: 'main',
-                    credentialsId: env.GITHUB_CREDENTIALS_ID,
-                    url: 'https://github.com/aabasimel/alx-backend-python/messaging_app.git'
-            }
-        }
-
-        stage('Setup Environment') {
-            steps {
-                sh '''
-                    # System dependencies
-                    apt-get update
-                    apt-get install -y pkg-config default-libmysqlclient-dev build-essential
-
-                    # Python virtual environment
-                    python3 -m venv venv
-                    . venv/bin/activate
-
-                    # Install dependencies
-                    pip3 install --upgrade pip
-                    pip3 install -r messaging_app/requirements.txt
-                    pip3 install pytest pytest-html pytest-cov pylint bandit safety
-                '''
-            }
-        }
-
-        stage('Code Quality & Security') {
-            parallel {
-                stage('Lint') {
-                    steps {
-                        script {
-                            def pylintOutput = sh(
-                                script: '''
-                                    . venv/bin/activate
-                                    pylint messaging_app/chats/ --exit-zero || true
-                                ''',
-                                returnStdout: true
-                            ).trim()
-                            
-                            // Check if pylint errors exceed threshold
-                            def errorCount = pylintOutput.count('error')
-                            if (errorCount > env.MAX_PYLINT_ERRORS.toInteger()) {
-                                error "Too many pylint errors: ${errorCount} (max: ${env.MAX_PYLINT_ERRORS})"
-                            }
-                        }
-                    }
-                }
-                
-                stage('Security Scan') {
-                    steps {
-                        script {
-                            parallel(
-                                'Bandit': {
-                                    // Static security analysis
-                                    sh '''
-                                        . venv/bin/activate
-                                        bandit -r messaging_app/chats/ -ll -ii -f html -o bandit-report.html
-                                    '''
-                                },
-                                'Safety': {
-                                    // Dependencies security check
-                                    sh '''
-                                        . venv/bin/activate
-                                        safety check -r messaging_app/requirements.txt --full-report -o text
-                                    '''
-                                },
-                                'Trivy': {
-                                    // Container security scan
-                                    sh '''
-                                        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-                                        trivy filesystem --security-checks vuln,config --severity HIGH,CRITICAL messaging_app/
-                                    '''
-                                }
-                            )
-                        }
-                    }
-                }
-                
-                stage('Code Style') {
-                    steps {
-                        sh '''
-                            . venv/bin/activate
-                            black --check messaging_app/chats/
-                            isort --check-only messaging_app/chats/
-                            flake8 messaging_app/chats/
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Run Tests') {
+        stage('Build Docker Image') {
             steps {
                 dir('messaging_app') {
+                    sh "docker build -t ${DOCKER_IMAGE} ."
+                }
+            }
+        }
+
+        stage('Run Tests in Docker') {
+            steps {
+                script {
                     sh '''
-                        . ../venv/bin/activate
-                        
-                        # Run tests with coverage
-                        python -m pytest ${PYTEST_ARGS} || {
-                            # Handle test failures
-                            EXIT_CODE=$?
-                            if [ $EXIT_CODE -eq 5 ]; then
-                                echo "WARNING: No tests found (exit code 5)"
-                                exit 0
-                            fi
-                            exit $EXIT_CODE
-                        }
+                        mkdir -p ${TEST_REPORT_DIR}
+                        docker run --rm \
+                          -v "${WORKSPACE}/messaging_app:/app" \
+                          -v "${WORKSPACE}/${TEST_REPORT_DIR}:/app/test-reports" \
+                          ${DOCKER_IMAGE} \
+                          bash -lc "pip install pytest pytest-html && cd /app && pytest --html=test-reports/report.html --self-contained-html"
                     '''
                 }
             }
-            post {
-                always {
-                    // Publish test and coverage reports
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'messaging_app',
-                        reportFiles: 'report.html, htmlcov/index.html, bandit-report.html',
-                        reportName: 'Test Reports'
-                    ])
-                    
-                    // Archive test results
-                    archiveArtifacts artifacts: 'messaging_app/report.html, messaging_app/htmlcov/**/*', fingerprint: true
-                }
-            }
         }
 
-        stage('Build and Push Docker Image') {
-            environment {
-                DOCKER_BUILDKIT = '1'  // Enable BuildKit for better performance
-            }
+        stage('Archive Reports') {
             steps {
-                script {
-                    def imageName = "${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
-                    def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
-                    
-                    // Build with cache optimization
-                    docker.build(imageName, '--build-arg BUILDKIT_INLINE_CACHE=1 messaging_app')
-                    
-                    // Tag and push images
-                    docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS_ID) {
-                        def image = docker.image(imageName)
-                        image.push()
-                        image.push('latest')
-                    }
-                }
-            }
-        }
-
-        stage('Deploy to Staging') {
-            when {
-                branch 'main'  // Only deploy from main branch
-                expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
-            }
-            steps {
-                script {
-                    def env = ENVIRONMENTS.staging
-                    
-                    // Notify deployment start
-                    slackSend(
-                        channel: SLACK_CHANNEL,
-                        color: 'warning',
-                        message: "Starting staging deployment of ${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}"
-                    )
-                    
-                    try {
-                        // Apply database migrations
-                        sh """
-                            kubectl exec -n ${env.namespace} deployment/messaging-app -- \
-                                python manage.py migrate --noinput
-                        """
-                        
-                        // Update deployment
-                        sh """
-                            kubectl -n ${env.namespace} set image \
-                                deployment/messaging-app \
-                                messaging-app=${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}
-                        """
-                        
-                        // Wait for rollout
-                        sh """
-                            kubectl -n ${env.namespace} rollout status \
-                                deployment/messaging-app --timeout=${DEPLOY_TIMEOUT}
-                        """
-                        
-                        // Verify deployment
-                        def statusCode = sh(
-                            script: "curl -s -o /dev/null -w '%{http_code}' ${env.url}/health",
-                            returnStdout: true
-                        ).trim()
-                        
-                        if (statusCode != "200") {
-                            error "Health check failed: ${statusCode}"
-                        }
-                        
-                        // Notify success
-                        slackSend(
-                            channel: SLACK_CHANNEL,
-                            color: 'good',
-                            message: "✅ Staging deployment successful: ${env.url}"
-                        )
-                    } catch (Exception e) {
-                        // Rollback on failure
-                        sh """
-                            kubectl -n ${env.namespace} rollout undo deployment/messaging-app
-                        """
-                        
-                        slackSend(
-                            channel: SLACK_CHANNEL,
-                            color: 'danger',
-                            message: "❌ Staging deployment failed: ${e.message}"
-                        )
-                        throw e
-                    }
-                }
-            }
-        }
-        
-        stage('Deploy to Production') {
-            when {
-                branch 'main'
-                expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
-            }
-            steps {
-                // Require manual approval
-                input message: 'Deploy to production?', ok: 'Deploy'
-                
-                script {
-                    def env = ENVIRONMENTS.production
-                    def previousVersion = sh(
-                        script: """
-                            kubectl -n ${env.namespace} get deployment messaging-app \
-                                -o=jsonpath='{.spec.template.spec.containers[0].image}'
-                        """,
-                        returnStdout: true
-                    ).trim()
-                    
-                    // Start deployment
-                    slackSend(
-                        channel: SLACK_CHANNEL,
-                        color: 'warning',
-                        message: "🚀 Starting production deployment of ${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}"
-                    )
-                    
-                    try {
-                        // Canary deployment (25% of traffic)
-                        sh """
-                            kubectl -n ${env.namespace} set image \
-                                deployment/messaging-app-canary \
-                                messaging-app=${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}
-                        """
-                        
-                        // Wait for canary
-                        sleep 300 // 5 minutes monitoring
-                        
-                        // If canary successful, update main deployment
-                        sh """
-                            kubectl -n ${env.namespace} set image \
-                                deployment/messaging-app \
-                                messaging-app=${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}
-                        """
-                        
-                        // Wait for full rollout
-                        sh """
-                            kubectl -n ${env.namespace} rollout status \
-                                deployment/messaging-app --timeout=${DEPLOY_TIMEOUT}
-                        """
-                        
-                        // Verify deployment
-                        parallel(
-                            'HTTP Check': {
-                                def statusCode = sh(
-                                    script: "curl -s -o /dev/null -w '%{http_code}' ${env.url}/health",
-                                    returnStdout: true
-                                ).trim()
-                                if (statusCode != "200") {
-                                    error "Health check failed: ${statusCode}"
-                                }
-                            },
-                            'Pod Check': {
-                                sh """
-                                    kubectl -n ${env.namespace} wait --for=condition=ready pod \
-                                        -l app=messaging-app --timeout=${DEPLOY_TIMEOUT}
-                                """
-                            }
-                        )
-                        
-                        // Success notification
-                        slackSend(
-                            channel: SLACK_CHANNEL,
-                            color: 'good',
-                            message: """✅ Production deployment successful
-                                *URL:* ${env.url}
-                                *Version:* ${BUILD_NUMBER}
-                                *Previous Version:* ${previousVersion}"""
-                        )
-                    } catch (Exception e) {
-                        // Rollback
-                        sh """
-                            kubectl -n ${env.namespace} rollout undo deployment/messaging-app
-                            kubectl -n ${env.namespace} rollout undo deployment/messaging-app-canary
-                        """
-                        
-                        slackSend(
-                            channel: SLACK_CHANNEL,
-                            color: 'danger',
-                            message: """❌ Production deployment failed
-                                *Error:* ${e.message}
-                                *Automatic rollback initiated*"""
-                        )
-                        throw e
-                    }
-                }
+                archiveArtifacts artifacts: '${TEST_REPORT_DIR}/**/*', fingerprint: true
             }
         }
     }
 
     post {
         always {
-            // Archive test reports
-            archiveArtifacts artifacts: 'test-reports/**/*'
             publishHTML([
-                allowMissing: false,
+                allowMissing: true,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
-                reportDir: 'test-reports',
+                reportDir: TEST_REPORT_DIR,
                 reportFiles: 'report.html',
-                reportName: 'Test Report',
-                reportTitles: 'Test Results'
+                reportName: 'PyTest Report'
             ])
-            
-            // Clean workspace
             cleanWs()
-                
-                // Notification details
-                def duration = currentBuild.durationString
-                def console = "${env.BUILD_URL}console"
-                def testReport = "${env.BUILD_URL}test_report/"
-                
-                // Send detailed Slack notification
-                slackSend(
-                    channel: SLACK_CHANNEL,
-                    color: currentBuild.currentResult == 'SUCCESS' ? 'good' : 'danger',
-                    message: """*Build ${currentBuild.currentResult}:* ${env.JOB_NAME} #${env.BUILD_NUMBER}
-                        *Duration:* ${duration}
-                        *Console:* ${console}
-                        *Test Report:* ${testReport}
-                        
-                        ${currentBuild.description ?: 'No description available'}"""
-                )
-                
-                // Send email notification
-                emailext (
-                    subject: "Build ${currentBuild.currentResult}: ${env.JOB_NAME} [${env.BUILD_NUMBER}]",
-                    body: """
-                        <h2>Build Information</h2>
-                        <p>Status: ${currentBuild.currentResult}</p>
-                        <p>Duration: ${duration}</p>
-                        
-                        <h2>Links</h2>
-                        <ul>
-                            <li><a href='${console}'>Console Output</a></li>
-                            <li><a href='${testReport}'>Test Report</a></li>
-                        </ul>
-                        
-                        <h2>Changes</h2>
-                        ${changeString ?: 'No changes'}
-                        
-                        <h2>Failed Tests</h2>
-                        ${currentBuild.resultIsBetterOrEqualTo('SUCCESS') ? 'No failed tests' : failedTests}
-                    """,
-                    to: '${DEFAULT_RECIPIENTS}',
-                    recipientProviders: [[$class: 'DevelopersRecipientProvider']],
-                    attachLog: true,
-                    compressLog: true,
-                    attachmentsPattern: 'messaging_app/report.html,messaging_app/htmlcov/**/*'
-                )
-            }
         }
-        
         success {
-            script {
-                if (env.BRANCH_NAME == 'main') {
-                    // Create GitHub release
-                    withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                        sh """
-                            curl -X POST \
-                                -H "Authorization: token ${GITHUB_TOKEN}" \
-                                -H "Accept: application/vnd.github.v3+json" \
-                                https://api.github.com/repos/aabasimel/messaging-app/releases \
-                                -d '{
-                                    "tag_name": "v${BUILD_NUMBER}",
-                                    "name": "Release ${BUILD_NUMBER}",
-                                    "body": "Automated release for build ${BUILD_NUMBER}",
-                                    "draft": false,
-                                    "prerelease": false
-                                }'
-                        """
-                    }
-                }
-            }
+            echo "Build succeeded: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
         }
-        
         failure {
-            script {
-                // Collect error logs
-                def errorLogs = sh(
-                    script: 'find . -name "*.log" -type f -exec grep -l "ERROR" {} \\;',
-                    returnStdout: true
-                ).trim()
-                
-                // Create error report
-                if (errorLogs) {
-                    writeFile file: 'error-report.txt', text: "Error Logs:\n${errorLogs}"
-                    archiveArtifacts artifacts: 'error-report.txt'
-                }
-                
-                // Send detailed error notification
-                slackSend(
-                    channel: SLACK_CHANNEL,
-                    color: 'danger',
-                    message: """🚨 *Build Failed*
-                        *Job:* ${env.JOB_NAME} #${env.BUILD_NUMBER}
-                        *Error:* ${currentBuild.description ?: 'Unknown error'}
-                        *Console:* ${env.BUILD_URL}console
-                        
-                        Please investigate and fix ASAP."""
-                )
-            }
-        }
-        
-        unstable {
-            slackSend(
-                channel: SLACK_CHANNEL,
-                color: 'warning',
-                message: """⚠️ *Build Unstable*
-                    *Job:* ${env.JOB_NAME} #${env.BUILD_NUMBER}
-                    *Console:* ${env.BUILD_URL}console
-                    
-                    Build completed with test failures or warnings."""
-            )
+            echo "Build failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
         }
     }
 }
