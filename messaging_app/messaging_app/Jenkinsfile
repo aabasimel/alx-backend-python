@@ -21,30 +21,26 @@ pipeline {
         timestamps()
         timeout(time: 1, unit: 'HOURS')
         buildDiscarder(logRotator(numToKeepStr: '10'))
-    }
-
-    tools {
-        git 'Default'
+        skipDefaultCheckout(true)
     }
 
     stages {
         stage('Checkout') {
             steps {
                 script {
-                    // Clean workspace before checkout
-                    deleteDir()
-                    // Checkout with specific settings
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: '*/main']],
-                        doGenerateSubmoduleConfigurations: false,
-                        extensions: [[$class: 'CleanBeforeCheckout']],
-                        submoduleCfg: [],
-                        userRemoteConfigs: [[
-                            url: 'https://github.com/aabasimel/alx-backend-python.git',
-                            credentialsId: 'github-credentials'
-                        ]]
-                    ])
+                    // Clean workspace
+                    sh 'rm -rf .git'
+                    sh 'rm -rf *'
+                    
+                    // Initialize new repository
+                    sh 'git init'
+                    
+                    // Add remote and fetch
+                    sh '''
+                        git remote add origin https://github.com/aabasimel/alx-backend-python.git
+                        git fetch origin
+                        git checkout -f origin/main
+                    '''
                 }
             }
         }
