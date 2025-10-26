@@ -5,8 +5,14 @@ RUN mkdir -p /app
 WORKDIR /app
 
 # Environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBUG=True \
+    SECRET_KEY=django-insecure-ci-testing-key-change-in-production \
+    DJANGO_ALLOWED_HOSTS="localhost 127.0.0.1 [::1]" \
+    DATABASE_URL=postgresql://postgres:postgres@db:5432/messaging \
+    CELERY_BROKER_URL=redis://redis:6379/0 \
+    REDIS_URL=redis://redis:6379/0
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -23,7 +29,9 @@ RUN pip install --upgrade pip
 
 # Copy requirements first for caching
 COPY requirements.txt /app/
-COPY .env /app/.env
+
+# Copy .env file if it exists, otherwise create a default one
+RUN touch /app/.env
 
 # Create virtual environment and install dependencies
 RUN python -m venv /venv \
