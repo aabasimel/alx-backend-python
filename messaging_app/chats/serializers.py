@@ -34,12 +34,9 @@ class MessageSerializer(serializers.ModelSerializer):
     message_id=serializers.UUIDField(read_only=True)
     sender=UserSerializer(read_only=True)
     message_body=serializers.CharField()
-    # conversation may be provided by the nested URL/view (perform_create)
-    # so make it optional during validation here.
+    
     conversation=serializers.PrimaryKeyRelatedField(queryset=Conversation.objects.all(), required=False, allow_null=True)
-    # ensure we handle datetimes safely even if the DB/model uses a DateField
-    # (some migrations/models use DateField with a datetime default). Represent
-    # sent_at as DateTime to avoid DRF asserting on datetime vs date.
+    
     sent_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
