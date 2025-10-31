@@ -2,7 +2,7 @@
 APP_PORT=${PORT:-8081}
 echo "Waiting for MySQL..."
 
-./wait-for-it.sh db:3306 --timeout=60 --strict -- echo "MySQL is up"
+./wait-for-it.sh mysqldb:3306 --timeout=60 --strict -- echo "MySQL is up"
 
 
 cd /app

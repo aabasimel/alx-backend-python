@@ -4,8 +4,8 @@ metadata:
   name: app-config
   namespace: messaging-app1
 data:
-  DB_HOST: app-service
-  DB_PORT: "5432"
+  DB_HOST: mysqldb
+  DB_PORT: "3306"
   DEBUG: "True"
-  DJANGO_ALLOWED_HOSTS: localhost
-  DATABASE_ENGINE: postgresql_psycopg2
+  DJANGO_ALLOWED_HOSTS: "messaging-app.local,127.0.0.1"
+  DATABASE_ENGINE: django.db.backends.mysql

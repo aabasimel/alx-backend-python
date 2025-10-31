@@ -1,26 +1,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: django-app-green
+  name: django-messaging-green
   namespace: messaging-app1
   labels:
-    app: django
+    app: django-messaging
     version: green
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: django
+      app: django-messaging
       version: green
   template:
     metadata:
       labels:
-        app: django
+        app: django-messaging
         version: green
     spec:
       containers:
         - name: django
-          image: messaging_app-web:green-latest
+          image: messaging_app-web:green-latest # Make sure this image exists
           ports:
             - containerPort: 8000
           envFrom:

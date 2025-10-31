@@ -5,7 +5,6 @@ metadata:
   namespace: messaging-app1
   labels: 
     app: django
-
 spec:
   replicas: 1
   selector:
@@ -18,15 +17,29 @@ spec:
     spec:
       containers:
         - name: django
-          image: messaging_app-web:latest
+          image: django-app:latest
+          imagePullPolicy: Never
           command: ["/app/entrypoint"]
           ports:
-            - containerPort: 8000
+            - containerPort: 8081
           envFrom:
             - configMapRef:
                 name: app-config 
             - secretRef:
                 name: db-secret-credentials
 
-          
+---
 
+apiVersion: v1
+kind: Service
+metadata:
+  name: messaging-app-service
+  namespace: messaging-app1
+spec:
+  selector:
+    app: django
+  ports:
+    - protocol: TCP
+      port: 8081          # Port exposed inside the cluster
+      targetPort: 8081   # Matches containerPort
+  type: NodePort          # Allows access from outside the cluster (Minikube)

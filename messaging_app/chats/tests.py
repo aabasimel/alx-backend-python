@@ -438,5 +438,3 @@ class MessagingSetTestCase(APITestCase):
         self.assertIsNotNone(response.data['previous'])  # Has previous page
 
 
-    def test_message_with_empty_body(self):
-        """Test creating message with empyt body"""
